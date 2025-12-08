@@ -23,10 +23,12 @@ class ClarkConcurrencyTest(HttpUser):
     complexity_response_times = {}  # Track by complexity
     complexity_counts = {}  # Track counts by complexity
     shutdown_event = threading.Event()
-    max_requests = 20
+    max_requests = 5
     stop_new_requests = False
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # GEVENT_SUPPORT=True  locust -f concurrent/concurrency_test.py --host=http://10.41.10.56:5006 --users 20 --spawn-rate 20  --headless --loglevel DEBUG
+
         self.tenant_id = kwargs.get("tenant_id", None)
         self.category_id = kwargs.get("category_id", None)
         self.user_request_count = 0
@@ -167,27 +169,58 @@ class ClarkConcurrencyTest(HttpUser):
         
         # 70% moderate, 30% simple
         if random.random() > 0.5:
-            return random.choice(moderate_queries)
+            if moderate_queries and len(moderate_queries)>0:
+                print(f"Moderate query selected")
+                return random.choice(moderate_queries)
+            elif simple_queries and len(simple_queries)>0:
+                return random.choice(simple_queries)
         else:
-            return random.choice(simple_queries)
+            if simple_queries and len(simple_queries)>0:
+                print(f"Simple queries  selected")
+                return random.choice(simple_queries)
+            elif moderate_queries and len(moderate_queries)>0:
+                return random.choice(moderate_queries)
+            
         
         
     @task(1)
     def chat(self):
+        print(f"&&&&&&&&&&&&&&&&&&&&&&&& --- CHAT Task ---Start  &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+        print(f"chat method/task invoked. Here are the details of the counters::")
+        
+        print(f"Value of ClarkConcurrencyTest.global_request_count :: {ClarkConcurrencyTest.global_request_count}")
+        print(f"Value of ClarkConcurrencyTest.max_requests :: {ClarkConcurrencyTest.max_requests}")
+        print(f"ClarkConcurrencyTest.active_requests :: {ClarkConcurrencyTest.active_requests}") 
+        print(f"&&&&&&&&&&&&&&&&&&&&&&&&& --- CHAT Task ---Counter details  &&&&&&&&&&&&&&&&&&&&&&&&&")
+        
+
         # Check if we should stop creating new requests
         if ClarkConcurrencyTest.global_request_count >= ClarkConcurrencyTest.max_requests:
             ClarkConcurrencyTest.stop_new_requests = True
             print(f"Reached max requests ({ClarkConcurrencyTest.max_requests}), stopping new requests")
+            print(f"Sleeping for 30 seconds...")
+            time.sleep(30)
+            
             return
+        else:
+            print(f"ClarkConcurrencyTest.global_request_count is not greater than ClarkConcurrencyTest.max_requests")
+            print(f"{ClarkConcurrencyTest.global_request_count} < {ClarkConcurrencyTest.max_requests}")
+            self.user_request_count += 1
+            ClarkConcurrencyTest.active_requests += 1
+            ClarkConcurrencyTest.global_request_count += 1
+            ClarkConcurrencyTest.stop_new_requests = False
+
+        
         if ClarkConcurrencyTest.stop_new_requests:
             print("Not creating new requests, waiting for existing ones to complete")
             return
         #pdb.set_trace()
-        self.user_request_count += 1
-        ClarkConcurrencyTest.active_requests += 1
-        ClarkConcurrencyTest.global_request_count += 1
-        print(f"Creating request {ClarkConcurrencyTest.global_request_count}")
+        
+        print(f"Step#1:: Now creating request #::  {ClarkConcurrencyTest.global_request_count}")
+        
+        
         try:
+            """
             self.queries = [
                 {"query":"How to setup AWS CLI","complexity":"Moderate"},
                 {"query":"What are the best practices for cloud security","complexity":"Moderate"},
@@ -203,26 +236,25 @@ class ClarkConcurrencyTest(HttpUser):
                 {"query":"What is the time","complexity":"Simple"},
                 {"query":"How are you","complexity":"Simple"},
                 {"query":"How's the weather in Delhi","complexity":"Simple"}
+                
+            ]"""
+
+            self.queries = [
+                {"query":"Compare and analyze differences between Sailpoint ISC and ENTRA ID","complexity":"Moderate"},
+                #{"query":"How's the weather in Delhi","complexity":"Simple"}
+                
             ]
             query_item = self.select_query_by_weight()
             selected_query=query_item["query"]
             query_complexity=query_item["complexity"]
-            print(f"selected query : {selected_query} with {query_complexity} complexity.")
-
-            request_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"############# Global Request No: {ClarkConcurrencyTest.global_request_count} #########--START--######### Time:: {request_time} #########")
+            print(f"Step#2:: selected query : {selected_query} with {query_complexity} complexity.")
+            request_start_time = datetime.datetime.now()
+            request_start_time_str=request_start_time.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Step#3:: ############# Global Request No: {ClarkConcurrencyTest.global_request_count} #########--START--######### Request Start  Time:: {request_start_time} #########")
             #print(f"User Request count {self.user_request_count}")
             print(f"Inside /chat task for tenant: ")
             
-            """
-            eyJraWQiOiJtaTFKVWlVNml0RW1hbnNVV0Q2bG1ZUHhQb2hWRmtNNGU5enFvaFwvNHRJMD0iLCJhbGciOiJSUzI1NiJ9.eyJhdF9oYXNoIjoiTUwyNTRzQjJicGNsNzdfd3ZYcWkzUSIsInN1YiI6IjYxODM1ZDFhLWUwYzEtNzAyYy02NDM3LWRjNDhkY2QyM2E5NiIsImNvZ25pdG86Z3JvdXBzIjpbImFwLXNvdXRoLTFfNVdESGgxdVpIX1NERy1TU08iXSwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuYXAtc291dGgtMS5hbWF6b25hd3MuY29tXC9hcC1zb3V0aC0xXzVXREhoMXVaSCIsImNvZ25pdG86dXNlcm5hbWUiOiJzZGctc3NvX21ydmZ2aWdjMG8yOHZqbDZiYjFpYmhzd2RwZHpoM3luYzV4bDBxcTRyOWEiLCJub25jZSI6IlVNelB5REh0UndXVWplUVlzd2FQIiwib3JpZ2luX2p0aSI6IjkyOTNiOTQ3LWYwYWQtNGIwZS1hZjE3LWQ3OWJlMDljZmE5YSIsImF1ZCI6ImRxNzhudTlqa2o2aGdqNm04YWloM2lrZHAiLCJpZGVudGl0aWVzIjpbeyJkYXRlQ3JlYXRlZCI6IjE3NDc1Nzc2MjEyOTEiLCJ1c2VySWQiOiJtcnZmVmlnQzBPMjh2akw2YkIxaUJoU3dkcGR6aDNZTmM1eGwwcVE0cjlBIiwicHJvdmlkZXJOYW1lIjoiU0RHLVNTTyIsInByb3ZpZGVyVHlwZSI6Ik9JREMiLCJpc3N1ZXIiOm51bGwsInByaW1hcnkiOiJ0cnVlIn1dLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc2NDgzMDc1MywiZXhwIjoxNzY0OTE3MTUzLCJpYXQiOjE3NjQ4MzA3NTMsImp0aSI6ImIyZTNhMWM3LTdlYWYtNDUyYS1iY2YzLTlhNzkwOTFmMTgzYSIsImVtYWlsIjoiYW1pdC5jaGFuZGVsYUBzZGdjLmNvbSJ9.USGUDsLFwHZ7_DKkX9WaRaPF5_kCu3CgT51Xk2PE8LfaLF1W3k06Uhk10HtDwmmGp5esWMEIe02evjPCCQO8IlAd00G2gfAhiYqhZDQ8MZ1RkNg8_y3wSzYdM5uA1ZmPB4jcOh3HZcSsIcBR6Y1J0oCuLuOQRSuamVmK87VVfHJro-Fti9pXFYBPCdsQIAhiF_2HwV7djK4MbK242wo49w6nFknWK7GJ-vuXsizM-Zw2o_3qPc7G1rULbehLeXGuZEhMibzpnIOyFxly1koNL9U9ZGPXR3jNStqQC3BNwsb-CIYL09ARPZdrft1g7-2HzDwxIzxr1v5bqMfg2Lf8Yg
-            
-            "query": "Show me the list of most polluted cities with highest AQI levels in the last 3 months",
-            "query": "How to setup AWS CLI"
-                    
-            
-            """
-            my_session_cookie="eyJraWQiOiJtaTFKVWlVNml0RW1hbnNVV0Q2bG1ZUHhQb2hWRmtNNGU5enFvaFwvNHRJMD0iLCJhbGciOiJSUzI1NiJ9.eyJhdF9oYXNoIjoiUzkzaE1JWldtNzRxR3lvVl9vRHcyUSIsInN1YiI6IjYxODM1ZDFhLWUwYzEtNzAyYy02NDM3LWRjNDhkY2QyM2E5NiIsImNvZ25pdG86Z3JvdXBzIjpbImFwLXNvdXRoLTFfNVdESGgxdVpIX1NERy1TU08iXSwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuYXAtc291dGgtMS5hbWF6b25hd3MuY29tXC9hcC1zb3V0aC0xXzVXREhoMXVaSCIsImNvZ25pdG86dXNlcm5hbWUiOiJzZGctc3NvX21ydmZ2aWdjMG8yOHZqbDZiYjFpYmhzd2RwZHpoM3luYzV4bDBxcTRyOWEiLCJub25jZSI6Im5CQ3loYTBodG9ORmxQT0hSM3o3Iiwib3JpZ2luX2p0aSI6IjUxMzE2OWU5LTZiODAtNGNkZi05YmM1LWIwNzFlZmM0NzYyYiIsImF1ZCI6ImRxNzhudTlqa2o2aGdqNm04YWloM2lrZHAiLCJpZGVudGl0aWVzIjpbeyJkYXRlQ3JlYXRlZCI6IjE3NDc1Nzc2MjEyOTEiLCJ1c2VySWQiOiJtcnZmVmlnQzBPMjh2akw2YkIxaUJoU3dkcGR6aDNZTmM1eGwwcVE0cjlBIiwicHJvdmlkZXJOYW1lIjoiU0RHLVNTTyIsInByb3ZpZGVyVHlwZSI6Ik9JREMiLCJpc3N1ZXIiOm51bGwsInByaW1hcnkiOiJ0cnVlIn1dLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc2NDkyMDk2MiwiZXhwIjoxNzY1MDA3MzYyLCJpYXQiOjE3NjQ5MjA5NjIsImp0aSI6IjA4M2M1MjY5LTRkOGYtNDQxYi1hNDk3LWFkZDYzZTI5NDgzYiIsImVtYWlsIjoiYW1pdC5jaGFuZGVsYUBzZGdjLmNvbSJ9.kicioQPrCrcrI40_Hs7GoHIeY7qw1IKeePIf1jAo0mTzyETkIlEqriEYVt9sB2OLs9NcTM67ieL41syP8EtMxpPtddOZ8ydNF4Vk0iC8SCcT1vyYy-X3eEXX3M8DHrqer0LhWD1PeE9BlBq1L2b9Mh6Ds8aTjXHR6eXlHzmaijMAUDa35v761HcrQfjMJWMIetM_2eMTudEungpiOx5dRW5jkyhXji6JkUUQAeaPAPxWIyiOTiYdQy5VxfqP6Nw-Y1pQcqLyHegEa3e8Q8c3wBeIGALKBJaBl-Rd37cLGT-5TR6e9CPqv3CPZxGPzaqfujolLC2hhN0c3BHYYv0iIw"
+            my_session_cookie="eyJraWQiOiJtaTFKVWlVNml0RW1hbnNVV0Q2bG1ZUHhQb2hWRmtNNGU5enFvaFwvNHRJMD0iLCJhbGciOiJSUzI1NiJ9.eyJhdF9oYXNoIjoiSVM5dDNTLWJ6cjJrbzI5a2xmdHlhdyIsInN1YiI6IjYxODM1ZDFhLWUwYzEtNzAyYy02NDM3LWRjNDhkY2QyM2E5NiIsImNvZ25pdG86Z3JvdXBzIjpbImFwLXNvdXRoLTFfNVdESGgxdVpIX1NERy1TU08iXSwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuYXAtc291dGgtMS5hbWF6b25hd3MuY29tXC9hcC1zb3V0aC0xXzVXREhoMXVaSCIsImNvZ25pdG86dXNlcm5hbWUiOiJzZGctc3NvX21ydmZ2aWdjMG8yOHZqbDZiYjFpYmhzd2RwZHpoM3luYzV4bDBxcTRyOWEiLCJub25jZSI6ImhXMkN1bDJSYVlKWnNOaDNsMndYIiwib3JpZ2luX2p0aSI6ImJiMTYyZDYxLWFiODItNGU3YS1hMzkxLTJiNmMzZDFlMzljMyIsImF1ZCI6ImRxNzhudTlqa2o2aGdqNm04YWloM2lrZHAiLCJpZGVudGl0aWVzIjpbeyJkYXRlQ3JlYXRlZCI6IjE3NDc1Nzc2MjEyOTEiLCJ1c2VySWQiOiJtcnZmVmlnQzBPMjh2akw2YkIxaUJoU3dkcGR6aDNZTmM1eGwwcVE0cjlBIiwicHJvdmlkZXJOYW1lIjoiU0RHLVNTTyIsInByb3ZpZGVyVHlwZSI6Ik9JREMiLCJpc3N1ZXIiOm51bGwsInByaW1hcnkiOiJ0cnVlIn1dLCJ0b2tlbl91c2UiOiJpZCIsImF1dGhfdGltZSI6MTc2NTE3NTk1NiwiZXhwIjoxNzY1MjYyMzU2LCJpYXQiOjE3NjUxNzU5NTYsImp0aSI6Ijc1YmE5OWZhLWUzOWUtNDY0ZS1hYmExLTEyZjIyNGExODVlYyIsImVtYWlsIjoiYW1pdC5jaGFuZGVsYUBzZGdjLmNvbSJ9.U8d1AXTkX71q0vpwUpvIxS64DhqSILMlhcx2mr0yJHcNVLanCGUX2Dyuk9K-R_XWWLl0rAUHRXlkxxjlpBNM0GIiJBTVGeEzTv30VK_Y1Ce_0Q5JoXJ-y2Z6OoXYjQKOT9pOEo7qCgD8URcH6J7lqrIETOw0bbjp4xaObg-WE8LwdjjvMloA51Pshfzzt8L_zAhA3gdD_9lHlE41gGHQt-RvxDoM2FZNGjg58tDkYqHUT4MlEWz44fsPy43bMRuPZHaOL1hLW0xi2CJmV5QGrmYwh8OL6Ji0xns78gtxmgNVoWsF78VyfUmzC6m9CAps6zbS0e0KHtVHwnC9mWD8NQ"
             unique_thread_id = str(uuid.uuid4())
             payload = {
                     "query": selected_query,
@@ -243,10 +275,10 @@ class ClarkConcurrencyTest(HttpUser):
                 }
             cookies = {"my_session_cookie": my_session_cookie}
             #self.client.post("/chat", json=payload, cookies=cookies)
-            print(f"payload query:: {payload['query']}")
-            print(f"payload thread_id:: {payload['configurables']}")
-            start_time = time.time()
-            print(f"")
+            print(f"Step#4:: payload query:: {payload['query']}")
+            print(f"Step#5:: payload thread_id:: {payload['configurables']}")
+            #start_time = time.time()
+           
             total_users = self.environment.runner.user_count if self.environment.runner else 0
             spawn_rate=self.get_spawn_rate()
             #spawn_rate = self.environment.runner.spawn_rate if self.environment.runner else 0
@@ -255,7 +287,7 @@ class ClarkConcurrencyTest(HttpUser):
             #total_users=10
             #spawn_rate=3
             #concurrent_users=3
-            print(f"Total Users: {total_users}, Spawn Rate: {spawn_rate}, Concurrent Users: {concurrent_users}")
+            print(f"Step#6:: Total Users: {total_users}, Spawn Rate: {spawn_rate}, Concurrent active Requests: {concurrent_users}")
             with self.client.post("/chat", json=payload, cookies=cookies, stream=True, catch_response=True) as response:
                 resp=""
                 for chunk in response.iter_content(chunk_size=4096):
@@ -265,12 +297,16 @@ class ClarkConcurrencyTest(HttpUser):
                         resp += chunk.decode('utf-8')
             
         
-            end_time = time.time()
-            response_time=end_time - start_time
-            print(f"Final response received : ::{resp}")
+            #end_time = time.time()
+            request_end_time =datetime.datetime.now()
+            request_end_time_str = request_end_time.strftime("%Y-%m-%d %H:%M:%S")
+            response_time=(request_end_time - request_start_time).total_seconds()
+            print(f"Step#7:: Final response received : ::{resp}")
+            print(f"Global Request No: {ClarkConcurrencyTest.global_request_count},  Request Start  Time:: {request_start_time} ")
+            print(f"Global Request No: {ClarkConcurrencyTest.global_request_count},  Request End Time:: {request_end_time} ")
             print(f"Total response time: {response_time} seconds")
 
-            ClarkConcurrencyTest.active_requests -= 1
+            #ClarkConcurrencyTest.active_requests -= 1
             if total_users not in ClarkConcurrencyTest.response_times:
                 ClarkConcurrencyTest.response_times[total_users] = []
                 ClarkConcurrencyTest.request_counts[total_users] = 0
@@ -294,11 +330,11 @@ class ClarkConcurrencyTest(HttpUser):
                         unique_thread_id,
                         payload['query'],
                         query_complexity,
-                        request_time,
-                        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        f"{response_time:.2f}",
+                        request_start_time_str,
+                        request_end_time_str,
+                        response_time,
                         concurrent_users,
-                        f"{avg_response_time:.2f}",
+                        avg_response_time,
                         response.status_code,
                         resp.replace('\n', ' ').replace('\r', '')  # Clean response for CSV
                     ])
