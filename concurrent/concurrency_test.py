@@ -15,7 +15,7 @@ import threading
 import signal
 
 class ClarkConcurrencyTest(HttpUser):
-    wait_time = between(1, 5)
+    wait_time = between(0, 0.1)
     global_request_count = 0
     response_times = {}  # Track response times by user count
     request_counts = {}  # Track request counts by user count
@@ -23,7 +23,7 @@ class ClarkConcurrencyTest(HttpUser):
     complexity_response_times = {}  # Track by complexity
     complexity_counts = {}  # Track counts by complexity
     shutdown_event = threading.Event()
-    max_requests = 5
+    max_requests = 30
     stop_new_requests = False
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -198,8 +198,8 @@ class ClarkConcurrencyTest(HttpUser):
         if ClarkConcurrencyTest.global_request_count >= ClarkConcurrencyTest.max_requests:
             ClarkConcurrencyTest.stop_new_requests = True
             print(f"Reached max requests ({ClarkConcurrencyTest.max_requests}), stopping new requests")
-            print(f"Sleeping for 30 seconds...")
-            time.sleep(30)
+            #print(f"Sleeping for 30 seconds...")
+            #time.sleep(30)
             
             return
         else:
@@ -220,7 +220,7 @@ class ClarkConcurrencyTest(HttpUser):
         
         
         try:
-            """
+            #"""
             self.queries = [
                 {"query":"How to setup AWS CLI","complexity":"Moderate"},
                 {"query":"What are the best practices for cloud security","complexity":"Moderate"},
@@ -237,13 +237,15 @@ class ClarkConcurrencyTest(HttpUser):
                 {"query":"How are you","complexity":"Simple"},
                 {"query":"How's the weather in Delhi","complexity":"Simple"}
                 
-            ]"""
-
+            ]
+            #"""
+            """
             self.queries = [
                 {"query":"Compare and analyze differences between Sailpoint ISC and ENTRA ID","complexity":"Moderate"},
                 #{"query":"How's the weather in Delhi","complexity":"Simple"}
                 
             ]
+            """
             query_item = self.select_query_by_weight()
             selected_query=query_item["query"]
             query_complexity=query_item["complexity"]
